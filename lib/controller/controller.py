@@ -165,9 +165,78 @@ def _formatInjection(inj):
 
     return data
 
+def _createDojoFindings():
+    try:
+        from defectdojo_api import defectdojo
+        defect_api = defectdojo.DefectDojoAPI(
+            os.getenv('DEFECTDOJO_HOST'), os.getenv('DEFECTDOJO_APIKEY'), os.getenv('DEFECTDOJO_USER'), debug=False)
+    except ImportError:
+        criticalMsg = "The DefectDojo library is not installed. Install it with 'pip install git+https://github.com/kn0wm4d/defectdojo_api.git'."
+        logger.critical(criticalMsg)
+        return None
+    except TypeError:
+        criticalMsg = "The DefectDojo environment variables are not set."
+        logger.critical(criticalMsg)
+        return None
+    
+
+    # Get Engagement from DefectDojo
+    engagement = defect_api.get_engagement(conf.engagementDojo)
+
+    if engagement.response_code == -1:
+        criticalMsg = "This DefectDojo Engagement doesn\'t exist. "
+        logger.critical(criticalMsg)
+        return None
+
+    # Get the Product ID related to this Engagement
+    product_id = re.match('/api/v1/products/(.*)/', engagement.data['product'])[1]
+
+    # List all tests on this engagement
+    tests = defect_api.list_tests(engagement_in=engagement.data['id'])
+
+    # Get list of SQLMap Tests on this engagement
+    tests_sqlmap = [test for test in tests.data['objects'] if test['test_type'] == "SQLMap Scan"]
+    
+    if any(tests_sqlmap):
+        # If an SQLMap Test exists, get the first one
+        test_id = tests_sqlmap[0]['id']
+
+    if not any(tests_sqlmap):
+        # If not, create an SQLMap test for this engagement
+        test_type = defect_api.list_test_types(name="SQLMap Scan")
+        
+        if test_type.count() > 0:
+            # Get SQLMap Test Type ID
+            test_type = test_type.data['objects'][0]['id']
+        else:
+            # If it doesn't exist, tell the user to create it
+            criticalMsg = "Please first create SQLMap Scan test type on DefectDojo."
+            logger.critical(criticalMsg)
+            return None
+        # Finally, create the SQLMap Test in this Engagement
+        test_id = defect_api.create_test(environment=1, target_start=engagement.data['target_start'], target_end=engagement.data['target_end'], engagement_id=engagement.data['id'], test_type=test_type).data
+
+    for injection in kb.injections:
+        for stype, sdata in injection.data.items():
+            title = 'SQL Injection - (%s)' % PAYLOAD.SQLINJECTION[stype]
+            payload = agent.adjustLateValues(sdata.payload)
+            payload = urldecode(payload, unsafe="&", spaceplus=(injection.place != PLACE.GET and kb.postSpaceToPlus))
+            description = 'Injection Type: %s\nVulnerable URL: %s %s\nCookie: %s\nOriginal Payload: %s\nPayload: %s' % (sdata.title.title(), injection.place, conf.url, conf.cookie, conf.data, payload)
+            severity = "Critical"
+
+            # Create the Finding on DefectDojo
+            finding = defect_api.create_finding(title, description, severity, cwe=89, date=time.strftime("%Y-%m-%d", time.gmtime()), product_id=product_id, engagement_id=engagement.data['id'],
+                test_id=test_id, user_id=1, impact="Integrity, Confidentiality", active="True", verified="True", mitigation="https://www.owasp.org/index.php/SQL_Injection_Prevention_Cheat_Sheet", references="https://www.owasp.org/index.php/SQL_Injection_Prevention_Cheat_Sheet").data
+            
+            infoMsg = 'uploaded finding to DefectDojo: %sfinding/%s' % (os.getenv('DEFECTDOJO_HOST'), finding)
+            logger.info(infoMsg)
+
 def _showInjections():
     if conf.wizard and kb.wizardMode:
         kb.wizardMode = False
+
+    if conf.engagementDojo:
+        _createDojoFindings()
 
     if kb.testQueryCount > 0:
         header = "sqlmap identified the following injection point(s) with "

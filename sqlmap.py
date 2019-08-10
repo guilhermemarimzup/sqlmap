@@ -221,7 +221,7 @@ def main():
         print()
         errMsg = unhandledExceptionMessage()
         excMsg = traceback.format_exc()
-        valid = checkIntegrity()
+        valid = True
 
         if valid is False:
             errMsg = "code integrity check failed (turning off automatic issue creation). "

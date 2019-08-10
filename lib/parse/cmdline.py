@@ -581,6 +581,7 @@ def cmdLineParser(argv=None):
 
         general.add_argument("-s", dest="sessionFile",
             help="Load session from a stored (.sqlite) file")
+        
 
         general.add_argument("-t", dest="trafficFile",
             help="Log all HTTP traffic into a textual file")
@@ -713,6 +714,9 @@ def cmdLineParser(argv=None):
 
         miscellaneous.add_argument("--wizard", dest="wizard", action="store_true",
             help="Simple wizard interface for beginner users")
+        
+        miscellaneous.add_argument("--engagement-dojo", dest="engagementDojo",
+            help="Engagement ID from DefectDojo to upload results")
 
         # Hidden and/or experimental options
         parser.add_argument("--base64", dest="base64Parameter",
