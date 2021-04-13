@@ -189,13 +189,16 @@ def _createDojoFindings():
         return None
 
     # Get the Product ID related to this Engagement
-    product_id = re.match('/api/v1/products/(.*)/', engagement.data['product'])[1]
+    product_id = re.match('/api/v2/products/(.*)/', engagement.data['product'])
 
     # List all tests on this engagement
     tests = defect_api.list_tests(engagement_in=engagement.data['id'])
+    tests_sqlmap = []
 
     # Get list of SQLMap Tests on this engagement
-    tests_sqlmap = [test for test in tests.data['objects'] if test['test_type'] == "SQLMap Scan"]
+    for test in tests.data["results"]:
+        if test['test_type_name'] == "SQLMap Scan":
+            tests_sqlmap = test
     
     if any(tests_sqlmap):
         # If an SQLMap Test exists, get the first one
@@ -225,8 +228,21 @@ def _createDojoFindings():
             severity = "Critical"
 
             # Create the Finding on DefectDojo
-            finding = defect_api.create_finding(title, description, severity, cwe=89, date=time.strftime("%Y-%m-%d", time.gmtime()), product_id=product_id, engagement_id=engagement.data['id'],
-                test_id=test_id, user_id=1, impact="Integrity, Confidentiality", active="True", verified="True", mitigation="https://www.owasp.org/index.php/SQL_Injection_Prevention_Cheat_Sheet", references="https://www.owasp.org/index.php/SQL_Injection_Prevention_Cheat_Sheet").data
+            finding = defect_api.create_finding(
+                title, 
+                description, 
+                severity, 
+                cwe=89, 
+                date=time.strftime("%Y-%m-%d", time.gmtime()), 
+                product_id=product_id, 
+                engagement_id=engagement.data['id'],
+                test_id=test_id, 
+                user_id=1, 
+                impact="Integrity, Confidentiality", 
+                active="True", 
+                verified="True", 
+                mitigation="https://www.owasp.org/index.php/SQL_Injection_Prevention_Cheat_Sheet", 
+                references="https://www.owasp.org/index.php/SQL_Injection_Prevention_Cheat_Sheet").data
             
             infoMsg = 'uploaded finding to DefectDojo: %sfinding/%s' % (os.getenv('DEFECTDOJO_HOST'), finding)
             logger.info(infoMsg)
